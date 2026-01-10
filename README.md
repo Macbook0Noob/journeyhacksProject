@@ -1,0 +1,1 @@
+Idea: Finding substitutes for cravings/sweet treats to make at home
