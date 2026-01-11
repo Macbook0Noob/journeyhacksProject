@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthy Baking Substitutions</title>
+    <link rel="stylesheet" href="/static/indexCSS.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🍰 Healthy Baking Substitutions</h1>
+        <p class="subtitle">Make your recipes healthier without sacrificing taste</p>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('single')">Single Ingredient</button>
+            <button class="tab" onclick="switchTab('recipe')">Full Recipe</button>
+        </div>
+        
+        <!-- Single Ingredient Tab -->
+        <div id="single-tab" class="tab-content active">
+            <div class="search-section">
+                <label for="ingredient">Select Ingredient to Replace:</label>
+                <select id="ingredient">
+                    <option value="">Loading ingredients...</option>
+                </select>
+                
+                <label for="recipe-type">Recipe Type (Optional):</label>
+                <input type="text" id="recipe-type" placeholder="e.g., cookies, muffins, cakes">
+                
+                <label for="priority">Priority:</label>
+                <select id="priority">
+                    <option value="balanced">Balanced</option>
+                    <option value="taste">Best Taste</option>
+                    <option value="health">Healthiest</option>
+                </select>
+                
+                <button onclick="findSubstitute()">Find Healthy Substitutes</button>
+            </div>
+        </div>
+        
+        <!-- Full Recipe Tab -->
+        <div id="recipe-tab" class="tab-content">
+            <div class="search-section">
+                <label for="recipe-ingredients">Paste Recipe Ingredients (one per line):</label>
+                <textarea id="recipe-ingredients" rows="8" placeholder="1 cup butter&#10;2 cups sugar&#10;3 eggs&#10;2 cups all-purpose flour"></textarea>
+                
+                <button onclick="analyzeRecipe()">Analyze Recipe</button>
+            </div>
+        </div>
+        
+        <div id="results" class="results"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        
+        // Load available ingredients when page loads
+        async function loadIngredients() {
+            try {
+                const response = await fetch(`${API_URL}/api/ingredients`);
+                const ingredients = await response.json();
+                
+                const select = document.getElementById('ingredient');
+                select.innerHTML = '<option value="">-- Select an ingredient --</option>';
+                
+                ingredients.forEach(ing => {
+                    const option = document.createElement('option');
+                    option.value = ing;
+                    option.textContent = ing.charAt(0).toUpperCase() + ing.slice(1);
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading ingredients:', error);
+                document.getElementById('ingredient').innerHTML = 
+                    '<option value="">Error loading ingredients</option>';
+            }
+        }
+        
+        // Find substitutes for a single ingredient
+        async function findSubstitute() {
+            const ingredient = document.getElementById('ingredient').value;
+            const recipeType = document.getElementById('recipe-type').value;
+            const priority = document.getElementById('priority').value;
+            const resultsDiv = document.getElementById('results');
+            
+            if (!ingredient) {
+                resultsDiv.innerHTML = '<div class="error">Please select an ingredient</div>';
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<div class="loading">Finding healthy alternatives...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/substitute`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ingredient: ingredient,
+                        recipe_type: recipeType,
+                        priority: priority
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    resultsDiv.innerHTML = `<div class="error">${data.error}</div>`;
+                    return;
+                }
+                
+                displayResults(data);
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Analyze full recipe
+        async function analyzeRecipe() {
+            const recipeText = document.getElementById('recipe-ingredients').value;
+            const resultsDiv = document.getElementById('results');
+            
+            if (!recipeText.trim()) {
+                resultsDiv.innerHTML = '<div class="error">Please enter recipe ingredients</div>';
+                return;
+            }
+            
+            const ingredients = recipeText.split('\n').filter(line => line.trim());
+            
+            resultsDiv.innerHTML = '<div class="loading">Analyzing your recipe...</div>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/analyze-recipe`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ingredients: ingredients
+                    })
+                });
+                
+                const data = await response.json();
+                displayRecipeAnalysis(data);
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+        
+        // Display results for single ingredient
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            let html = '<h2>Recommended Substitution:</h2>';
+            
+            if (data.recommended) {
+                html += createSubstituteCard(data.recommended, true);
+            }
+            
+            if (data.alternatives && data.alternatives.length > 0) {
+                html += '<h3 style="margin-top: 20px;">Alternative Options:</h3>';
+                data.alternatives.forEach(alt => {
+                    html += createSubstituteCard(alt, false);
+                });
+            }
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        // Display recipe analysis results
+        function displayRecipeAnalysis(data) {
+            const resultsDiv = document.getElementById('results');
+            let html = `<h2>Recipe Analysis</h2>
+                        <p>Found ${data.substitutions_found} ingredients that can be made healthier:</p>`;
+            
+            data.suggestions.forEach(suggestion => {
+                html += `
+                    <div class="substitute-card">
+                        <div style="margin-bottom: 10px;">
+                            <strong>Original:</strong> ${suggestion.original}
+                        </div>
+                        ${createSubstituteCard(suggestion.suggested_replacement, false)}
+                    </div>
+                `;
+            });
+            
+            resultsDiv.innerHTML = html;
+        }
+        
+        // Create HTML for a substitute card
+        function createSubstituteCard(substitute, isRecommended) {
+            return `
+                <div class="substitute-card" style="${isRecommended ? 'border-left-width: 6px;' : ''}">
+                    <div class="substitute-name">
+                        ${isRecommended ? '⭐ ' : ''}${substitute.name.charAt(0).toUpperCase() + substitute.name.slice(1)}
+                        <span class="taste-score">Taste: ${substitute.taste_score}/10</span>
+                    </div>
+                    <div class="substitute-detail">
+                        <strong>Ratio:</strong> ${substitute.ratio}
+                    </div>
+                    <div class="substitute-detail">
+                        <strong>Benefits:</strong> ${substitute.benefits}
+                    </div>
+                    <div class="substitute-detail">
+                        <strong>Best for:</strong> ${substitute.best_for}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Switch between tabs
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Clear results
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        // Load ingredients when page loads
+        window.addEventListener('load', loadIngredients);
+    </script>
+</body>
+</html>
